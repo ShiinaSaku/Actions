@@ -1,0 +1,51 @@
+name: Extract Book to Text
+
+# Trigger manually with a button click
+on:
+  workflow_dispatch:
+  push:
+
+jobs:
+  extract-text:
+    runs-on: ubuntu-latest
+
+    steps:
+      # 1. Check out your code and the PDF
+      - name: Checkout Repo
+        uses: actions/checkout@v6
+
+      # 2. Set up Python
+      - name: Set up Python 3
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
+          cache: "pip"
+
+      - name: Install Poppler (PDF Engine)
+        run: |
+          sudo apt-get update --quiet
+          sudo apt-get install -y poppler-utils tesseract-ocr
+
+      - name: Install Dependencies
+        run: |
+          pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cpu
+
+          # Install Marker
+          pip install marker-pdf
+
+      # 5. Run the Extraction
+      # We modify the script call slightly to ensure it doesn't look for a GPU
+      - name: Run Extraction Script
+        env:
+          TORCH_DEVICE: cpu
+        run: |
+          python3 script.py
+
+      # 6. Upload the Result
+      # This saves the 'out' folder so you can download it
+      - name: Upload Extracted Text
+        uses: actions/upload-artifact@v5
+        with:
+          name: extracted-book-markdown
+          path: out/
+          retention-days: 5
