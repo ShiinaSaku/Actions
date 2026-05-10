@@ -1,47 +1,85 @@
-name: Extract Book to Text
+name: Build Android ARM64 Rust Tools
 
-# Trigger manually with a button click
 on:
   workflow_dispatch:
-  push:
 
 jobs:
-  extract-text:
+  build:
     runs-on: ubuntu-latest
 
+    env:
+      CARGO_TERM_COLOR: always
+
     steps:
-      # 1. Check out your code and the PDF
-      - name: Checkout Repo
-        uses: actions/checkout@v6
+      - name: Checkout
+        uses: actions/checkout@v4
 
-      # 2. Set up Python
-      - name: Set up Python 3
-        uses: actions/setup-python@v6
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
         with:
-          python-version: "3.14"
+          targets: aarch64-linux-android
 
-      - name: Install Poppler (PDF Engine)
-        run: |
-          sudo apt-get update --quiet
-          sudo apt-get install -y poppler-utils tesseract-ocr
-
-      - name: Install Dependencies
-        run: |
-          pip install marker-pdf
-
-      # 5. Run the Extraction
-      # We modify the script call slightly to ensure it doesn't look for a GPU
-      - name: Run Extraction Script
-        env:
-          TORCH_DEVICE: cpu
-        run: |
-          python3 script.py
-
-      # 6. Upload the Result
-      # This saves the 'out' folder so you can download it
-      - name: Upload Extracted Text
-        uses: actions/upload-artifact@v5
+      - name: Install Zig
+        uses: mlugg/setup-zig@v1
         with:
-          name: extracted-book-markdown
-          path: out/
-          retention-days: 5
+          version: latest
+
+      - name: Install cargo-zigbuild
+        run: cargo install cargo-zigbuild
+
+      - name: Build tools for Android ARM64
+        run: |
+          mkdir -p out/bin
+
+          cargo zigbuild \
+            --release \
+            --target aarch64-linux-android \
+            --package watchexec-cli || true
+
+          cargo install watchexec-cli \
+            --target aarch64-linux-android \
+            --root ./out \
+            --locked
+
+          cargo install cargo-insta \
+            --target aarch64-linux-android \
+            --root ./out \
+            --locked
+
+          cargo install typos-cli \
+            --target aarch64-linux-android \
+            --root ./out \
+            --locked
+
+          cargo install cargo-shear \
+            --target aarch64-linux-android \
+            --root ./out \
+            --locked
+
+          cargo install dprint \
+            --target aarch64-linux-android \
+            --root ./out \
+            --locked
+
+          cargo install taplo-cli \
+            --target aarch64-linux-android \
+            --root ./out \
+            --locked
+
+      - name: Strip binaries
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y llvm
+
+          find out/bin -type f -exec llvm-strip {} \;
+
+      - name: Archive binaries
+        run: |
+          cd out
+          tar -czf rust-tools-aarch64-android.tar.gz bin
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: rust-tools-aarch64-android
+          path: out/rust-tools-aarch64-android.tar.gz
