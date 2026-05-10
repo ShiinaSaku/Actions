@@ -1,4 +1,4 @@
-name: Build Android ARM64 Rust Tools
+name: Build Android Rust Tools
 
 on:
   workflow_dispatch:
@@ -8,78 +8,74 @@ jobs:
     runs-on: ubuntu-latest
 
     env:
-      CARGO_TERM_COLOR: always
+      TARGET: aarch64-linux-android
+      API: 29
 
     steps:
-      - name: Checkout
-        uses: actions/checkout@v6
+      - uses: actions/checkout@v6
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
         with:
           targets: aarch64-linux-android
 
-      - name: Install Zig
-        uses: mlugg/setup-zig@v2
+      - name: Install Android NDK
+        uses: nttld/setup-ndk@v1
         with:
-          version: latest
+          ndk-version: r29
 
-      - name: Install cargo-zigbuild
-        run: cargo install cargo-zigbuild
-
-      - name: Build tools for Android ARM64
+      - name: Configure toolchain
         run: |
-          mkdir -p out/bin
+          echo "$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin" >> $GITHUB_PATH
 
-          cargo zigbuild \
-            --release \
-            --target aarch64-linux-android \
-            --package watchexec-cli || true
+          export TOOLCHAIN=$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin
 
+          echo "CC_aarch64_linux_android=$TOOLCHAIN/aarch64-linux-android${API}-clang" >> $GITHUB_ENV
+          echo "AR_aarch64_linux_android=$TOOLCHAIN/llvm-ar" >> $GITHUB_ENV
+          echo "CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER=$TOOLCHAIN/aarch64-linux-android${API}-clang" >> $GITHUB_ENV
+
+      - name: Install tools
+        run: |
           cargo install watchexec-cli \
-            --target aarch64-linux-android \
+            --target $TARGET \
             --root ./out \
             --locked
 
           cargo install cargo-insta \
-            --target aarch64-linux-android \
+            --target $TARGET \
             --root ./out \
             --locked
 
           cargo install typos-cli \
-            --target aarch64-linux-android \
+            --target $TARGET \
             --root ./out \
             --locked
 
           cargo install cargo-shear \
-            --target aarch64-linux-android \
+            --target $TARGET \
             --root ./out \
             --locked
 
           cargo install dprint \
-            --target aarch64-linux-android \
+            --target $TARGET \
             --root ./out \
             --locked
 
           cargo install taplo-cli \
-            --target aarch64-linux-android \
+            --target $TARGET \
             --root ./out \
             --locked
 
-      - name: Strip binaries
+      - name: Show binaries
         run: |
-          sudo apt-get update
-          sudo apt-get install -y llvm
+          file out/bin/*
 
-          find out/bin -type f -exec llvm-strip {} \;
-
-      - name: Archive binaries
+      - name: Archive
         run: |
-          cd out
-          tar -czf rust-tools-aarch64-android.tar.gz bin
+          tar -czf rust-tools.tar.gz -C out bin
 
-      - name: Upload artifact
+      - name: Upload
         uses: actions/upload-artifact@v4
         with:
-          name: rust-tools-aarch64-android
-          path: out/rust-tools-aarch64-android.tar.gz
+          name: rust-tools-android
+          path: rust-tools.tar.gz
