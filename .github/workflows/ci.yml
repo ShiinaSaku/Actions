@@ -1,81 +1,26 @@
-name: Build Android Rust Tools
+name: Build Windows ARM64
 
 on:
   workflow_dispatch:
+  push:
+    branches: [main]
 
 jobs:
   build:
-    runs-on: ubuntu-latest
-
-    env:
-      TARGET: aarch64-linux-android
-      API: 29
+    runs-on: windows-11-arm
 
     steps:
-      - uses: actions/checkout@v6
-
-      - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
+      - uses: actions/checkout@v7
         with:
-          targets: aarch64-linux-android
+          repository: shiinasaku/hayate
 
-      - name: Install Android NDK
-        uses: nttld/setup-ndk@v1
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Build
+        run: cargo build --release --locked
+
+      - name: Upload binary
+        uses: actions/upload-artifact@v7
         with:
-          ndk-version: r29
-
-      - name: Configure toolchain
-        run: |
-          echo "$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin" >> $GITHUB_PATH
-
-          export TOOLCHAIN=$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin
-
-          echo "CC_aarch64_linux_android=$TOOLCHAIN/aarch64-linux-android${API}-clang" >> $GITHUB_ENV
-          echo "AR_aarch64_linux_android=$TOOLCHAIN/llvm-ar" >> $GITHUB_ENV
-          echo "CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER=$TOOLCHAIN/aarch64-linux-android${API}-clang" >> $GITHUB_ENV
-
-      - name: Install tools
-        run: |
-          cargo install watchexec-cli \
-            --target $TARGET \
-            --root ./out \
-            --locked
-
-          cargo install cargo-insta \
-            --target $TARGET \
-            --root ./out \
-            --locked
-
-          cargo install typos-cli \
-            --target $TARGET \
-            --root ./out \
-            --locked
-
-          cargo install cargo-shear \
-            --target $TARGET \
-            --root ./out \
-            --locked
-
-          cargo install dprint \
-            --target $TARGET \
-            --root ./out \
-            --locked
-
-          cargo install taplo-cli \
-            --target $TARGET \
-            --root ./out \
-            --locked
-
-      - name: Show binaries
-        run: |
-          file out/bin/*
-
-      - name: Archive
-        run: |
-          tar -czf rust-tools.tar.gz -C out bin
-
-      - name: Upload
-        uses: actions/upload-artifact@v4
-        with:
-          name: rust-tools-android
-          path: rust-tools.tar.gz
+          name: hayate-windows-arm64
+          path: target/release/hayate.exe
