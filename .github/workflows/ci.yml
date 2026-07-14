@@ -44,7 +44,7 @@ jobs:
         uses: nttld/setup-ndk@v1
         id: ndk
         with:
-          ndk-version: r28b
+          ndk-version: r29
 
       - name: bun install
         run: bun install
