@@ -1,26 +1,78 @@
-name: Build Windows ARM64
+name: Bun Android (aarch64) — build latest
 
 on:
   workflow_dispatch:
-  push:
-    branches: [main]
 
 jobs:
-  build:
-    runs-on: windows-11-arm
-
+  build-android:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
     steps:
-      - uses: actions/checkout@v7
+      - name: Checkout Bun (latest main)
+        uses: actions/checkout@v7
         with:
-          repository: shiinasaku/hayate
+          repository: oven-sh/bun
+          ref: main
+          submodules: recursive
 
-      - uses: dtolnay/rust-toolchain@stable
+      - name: Install system deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            curl wget lsb-release software-properties-common \
+            cmake git golang libtool ninja-build pkg-config \
+            ruby-full xz-utils perl ccache unzip
 
-      - name: Build
-        run: cargo build --release --locked
+      - name: Install LLVM/Clang 21
+        run: |
+          wget https://apt.llvm.org/llvm.sh -O /tmp/llvm.sh
+          chmod +x /tmp/llvm.sh
+          sudo /tmp/llvm.sh 21 all
+          echo "/usr/lib/llvm-21/bin" >> "$GITHUB_PATH"
 
-      - name: Upload binary
+      - name: Install Rust
+        run: |
+          curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain none
+          echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
+
+      - name: Install host Bun
+        run: |
+          curl -fsSL https://bun.com/install | bash
+          echo "$HOME/.bun/bin" >> "$GITHUB_PATH"
+
+      - name: Install Android NDK
+        uses: nttld/setup-ndk@v1
+        id: ndk
+        with:
+          ndk-version: r28b
+
+      - name: bun install
+        run: bun install
+
+      - name: Build (android/aarch64, best-effort inbuilt config)
+        id: build
+        continue-on-error: true
+        run: |
+          bun scripts/build.ts \
+            --profile=release \
+            --abi=android \
+            --arch=aarch64 \
+            --androidNdk="${{ steps.ndk.outputs.ndk-path }}"
+
+      - name: Upload everything build produced (binary, ninja file, logs)
+        if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: hayate-windows-arm64
-          path: target/release/hayate.exe
+          name: bun-android-aarch64
+          path: |
+            build/*/bun*
+            build/*/build.ninja
+            build/*/configure.json
+            build/*/*.log
+            build/*/ccache.log
+          if-no-files-found: warn
+
+      - name: Fail job if build failed
+        if: steps.build.outcome == 'failure'
+        run: exit 1
+        
