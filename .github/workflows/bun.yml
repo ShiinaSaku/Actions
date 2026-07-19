@@ -1,94 +1,49 @@
-name: Bun Android (aarch64) — build latest
+name: PDF to Markdown
 
 on:
   workflow_dispatch:
+    inputs:
+      pdf_url:
+        description: "Direct PDF download URL"
+        required: true
+        type: string
 
 jobs:
-  build-android:
-    runs-on: ubuntu-24.04
-    timeout-minutes: 180
+  convert:
+    runs-on: ubuntu-latest
+
     steps:
-      - name: Checkout Bun (latest main)
-        uses: actions/checkout@v7
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
         with:
-          repository: oven-sh/bun
-          ref: main
-          submodules: recursive
+          python-version: "3.12"
 
-      - name: Install system deps
+      - name: Install MarkItDown
         run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-            curl wget lsb-release software-properties-common \
-            cmake git golang libtool ninja-build pkg-config \
-            ruby-full xz-utils perl ccache unzip
+          python -m pip install --upgrade pip
+          pip install "markitdown[pdf]"
 
-      - name: Install LLVM/Clang 21
+      - name: Download PDF
         run: |
-          wget https://apt.llvm.org/llvm.sh -O /tmp/llvm.sh
-          chmod +x /tmp/llvm.sh
-          sudo /tmp/llvm.sh 21 all
-          echo "/usr/lib/llvm-21/bin" >> "$GITHUB_PATH"
+          curl -L --fail "${{ github.event.inputs.pdf_url }}" -o input.pdf
+          ls -lh input.pdf
 
-      - name: Install Rust
+      - name: Convert to Markdown
         run: |
-          curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain none
-          echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
+          mkdir -p output
+          markitdown input.pdf > output/document.md
 
-      - name: Install host Bun
-        run: |
-          curl -fsSL https://bun.com/install | bash
-          echo "$HOME/.bun/bin" >> "$GITHUB_PATH"
-
-      - name: Install Android NDK
-        uses: nttld/setup-ndk@v1
-        id: ndk
+      - name: Upload Markdown
+        uses: actions/upload-artifact@v4
         with:
-          ndk-version: r29
+          name: markdown
+          path: output/
 
-      - name: bun install
-        run: bun install
-
-      - name: Pre-link NDK compiler-rt/libunwind into system LLVM (avoid EACCES at link time)
-        run: |
-          NDK="${{ steps.ndk.outputs.ndk-path }}"
-          RT_SRC="$NDK/toolchains/llvm/prebuilt/linux-x86_64/lib/clang/21/lib/linux"
-          sudo mkdir -p \
-            "/usr/lib/llvm-21/lib/clang/21/lib/aarch64-unknown-linux-android28" \
-            "/usr/lib/llvm-21/lib/clang/21/lib/linux/aarch64"
-          sudo ln -sf "$RT_SRC/libclang_rt.builtins-aarch64-android.a" \
-            "/usr/lib/llvm-21/lib/clang/21/lib/aarch64-unknown-linux-android28/libclang_rt.builtins.a"
-          sudo ln -sf "$RT_SRC/aarch64/libunwind.a" \
-            "/usr/lib/llvm-21/lib/clang/21/lib/aarch64-unknown-linux-android28/libunwind.a"
-          sudo ln -sf "$RT_SRC/libclang_rt.builtins-aarch64-android.a" \
-            "/usr/lib/llvm-21/lib/clang/21/lib/linux/libclang_rt.builtins-aarch64-android.a"
-          sudo ln -sf "$RT_SRC/aarch64/libunwind.a" \
-            "/usr/lib/llvm-21/lib/clang/21/lib/linux/aarch64/libunwind.a"
-
-      - name: Build (android/aarch64, best-effort inbuilt config)
-        id: build
-        continue-on-error: true
-        run: |
-          bun scripts/build.ts \
-            --profile=release \
-            --abi=android \
-            --arch=aarch64 \
-            --androidNdk="${{ steps.ndk.outputs.ndk-path }}"
-
-      - name: Upload everything build produced (binary, ninja file, logs)
-        if: always()
-        uses: actions/upload-artifact@v7
+      - name: Upload Original PDF
+        uses: actions/upload-artifact@v4
         with:
-          name: bun-android-aarch64
-          path: |
-            build/*/bun*
-            build/*/build.ninja
-            build/*/configure.json
-            build/*/*.log
-            build/*/ccache.log
-          if-no-files-found: warn
-
-      - name: Fail job if build failed
-        if: steps.build.outcome == 'failure'
-        run: exit 1
-        
+          name: original-pdf
+          path: input.pdf
